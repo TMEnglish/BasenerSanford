@@ -1,5 +1,3 @@
-import scipy.stats as stats
-
 class Equilibria(object):
     """
     Container for an array of equilibria and associated statistics.
@@ -8,35 +6,28 @@ class Equilibria(object):
     over mutational effects, and each column corresponds to an upper
     limit on fitness.
     """    
-    def __init__(self, mixture_weights, b_maxes, params_class=None):
+    def __init__(self, gammas, b_maxes, d='0.1', params_class=None):
         """
         Create array of equilibria, and calculate associated statistics.
         
-        `params_class`: subclass of `Parameters` (default `Parameters`)
-        `mixture_weights`: weightings of beneficial effects
+        `gammas`: weightings of beneficial effects
         `b_maxes`: upper limits on birth rate
+        `params_class`: subclass of `Parameters` (default `Parameters`)
         
         The mixture weights must be integer powers of 2 or 10.
         """
         # Create array of parameters objects, with one row for each
-        # mixture weight, and one column for each birth-rate limit.
+        # mixture weight, and one column for each birth-rate limit. The
+        # death parameter is set to zero in order to improve the speed
+        # and accuracy of eigenvector calculations. Below, `d` is
+        # subtracted from fitnesses and eigenvalues.
         if params_class is None:
             params_class = Parameters
-        params = [[params_class(b_max=b_max, gamma=gamma) 
+        params = [[params_class(b_max=b_max, gamma=gamma, d=0) 
                        for b_max in b_maxes]
-                           for gamma in mixture_weights]
+                           for gamma in gammas]
         self.params = np.array(params)
-        #
-        # Get the upper limits on fitness from the first row of the
-        # parameters objects.
-        fitness_limits = [p.m[-1] for p in params[0]]
-        self.fitness_limits = np.array(fitness_limits, dtype=float)
-        #
-        # Convert the mixture weights to LaTeX expressions that will
-        # be used in labeling figures.
-        self.mixture_weights = mixture_weights.astype(float)
-        self.weight_labels = [exp_latex(g, '\gamma=') 
-                                  for g in mixture_weights]
+        d = mp_float(d)
         #
         # Create arrays to hold results, with rows corresponding to
         # probability distributions over mutational effects, and columns
@@ -53,12 +44,24 @@ class Equilibria(object):
             for j in range(n):
                 W = self.params[i,j].W.astype(float)
                 m = self.params[i,j].m
+                m -= d
                 e_value, e_vector, error = equilibrium(W)
                 e_vector /= fsum(e_vector)
                 self.eq[i,j] = e_vector
-                self.e_value[i,j] = e_value
+                self.e_value[i,j] = e_value - d
                 self.eigen_error[i,j] = error
                 self.mean[i,j], self.var[i,j] = mean_var(self.eq[i,j], m)
+        #
+        # Get the upper limits on fitness from the first row of the
+        # parameters objects.
+        fitness_limits = [p.m[-1] for p in params[0]]
+        self.fitness_limits = np.array(fitness_limits, dtype=float)
+        #
+        # Convert the mixture weights to LaTeX expressions that will
+        # be used in labeling figures.
+        self.mixture_weights = mixture_weights.astype(float)
+        self.weight_labels = [exp_latex(g, '\gamma=') 
+                                  for g in mixture_weights]
 
     def plot_stats(self):
         """

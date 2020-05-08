@@ -2,7 +2,7 @@ class Solver(object):
     """
     A solver for relative frequencies in the modified model.
     
-    A modification of the Euler forward method of numerical integration
+    A modification of the forward Euler method of numerical integration
     is applied. Solutions for relative frequencies are set to zero when
     they fall below a given threshold, and subsequently are held at zero.
     Only end-of-year solutions are stored, beginning with the solution

@@ -84,26 +84,6 @@ def relative_error(actual, desired):
     return result
 
 
-def trim(array, threshold):
-    """
-    Zeroes sub-`threshold` elements at left and right ends of `array`.
-    
-    Returns pair `(left, right)` indicating how many elements were
-    zeroed at the left and right ends of the given 1-D `array`.
-    """
-    zero = array[0] * 0
-    last = len(array) - 1
-    left = 0
-    while left <= last and array[left] < threshold:
-        array[left] = zero
-        left += 1
-    right = last
-    while right >= 0 and array[right] < threshold:
-        array[right] = zero
-        right -= 1
-    return left, last - right
-
-
 def slice_to_support(p):
     """
     Returns a slice excluding zeros in the tails of distribution `p`.

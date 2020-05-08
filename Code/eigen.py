@@ -1,29 +1,38 @@
-import numpy.random as random
+from scipy import linalg
 
 
 def equilibrium(W, max_error=1e-14, maxiter=10**5):
     """
-    Calculates dominant eigenvalue and eigenvector of matrix `W`.
+    Finds the equilibrium distribution for derivative operator `W`.
     
     Returns 
-        * the dominant eigenvalue of square array `W`,
+        * the largest real eigenvalue of square array `W`,
         * an eigenvector `v` corresponding to the eigenvalue, and
         * the error `eig_error(W, v)` of the calculated eigenpair.
     
-    The calculation proceeds until the error is no greater than
-    `max_error`, or the number of iterations exceeds `max_iterations`.
+    The equilibrium is initially approximated using a function in the
+    SciPy package. Then the approximation is iteratively improved. The
+    calculation proceeds until the error is no greater than `max_error`,
+    or the number of iterations exceeds `max_iterations`.
     """
-    # Create an instance of `Solver` with random initial frequencies
-    # (all positive), step size of one year, and threshold relative
-    # frequency of zero.
-    solver = Solver(W, random.rand(len(W)) + 1e-15, 1, threshold=0)
+    # Get a first approximation of an eigenvector corresponding to the
+    # largest real eigenvalue of `W`, using the `eig` function of 
+    # SciPy's linear algebra package. The elements of the eigenvector
+    # complex numbers, possibly with negative real components. Thus we
+    # replace the elements with their absolute values.
+    e_values, e_vectors = linalg.eig(W)
+    which = np.argmax(e_values.real)
+    e_vector = np.abs(e_vectors[:,which])
     #
-    # Calculate the error of the initial guess of the eigenvector.
+    # Create an instance of `Solver` with threshold relative frequency
+    # of zero, step size of one year, and initial frequencies equal to
+    # the first approximation of the eigenvector.
+    solver = Solver(W, e_vector, 1, threshold=0)
+    #
+    # Run the solver repeatedly, 1000 iterations per run, until the
+    # solution converges to an eigenvector of `W` or the maximum 
+    # number of iterations is exceeded.
     error, e_value = eigen_error(W, solver.s)
-    #
-    # Run the solver repeatedly, 1000 years per iteration, until the
-    # solution converges to an eigenvector of `W` or the maximum of
-    # iterations is exceeded.
     while error > max_error and len(solver) <= maxiter:
         solver(1000)
         error, e_value = eigen_error(W, solver.s)
