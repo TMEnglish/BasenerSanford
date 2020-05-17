@@ -3,7 +3,7 @@ class Parameters(object):
     Stores all parameter settings of the infinite-population model.    
     
     There are correspondingly named members for model parameters b, d,
-    m, w, gamma, n, and W. Instance method `p()` returns the
+    m, w, gamma, n, and W. Instance method `q()` returns the
     probability distribution over mutational effects, and class method
     `f()` returns the corresponding matrix.
     
@@ -47,33 +47,33 @@ class Parameters(object):
         # effects) by the corresponding birth parameters, and then
         # subtract the death parameter from the elements of the main
         # diagonal.
-        self.W = self.f(self.p(self.gamma)) * self.b
+        self.W = self.f(self.q(self.gamma)) * self.b
         self.W[np.diag_indices(self.n)] -= self.d
         
     @classmethod
-    def f(self, p):
+    def f(self, q):
         """
         Returns the matrix of probabilities of mutational effects.
         
-        The given probability distribution (1-D array) `p` contains
+        The given probability distribution (1-D array) `q` contains
         2n - 1 non-negative numbers summing to 1. 
         
         The returned matrix `f` is n-by-n. Each off-diagonal element
-        `f[i,j]` is set to `p[n-1+i-j]`. Each element `f[j,j]` is set
+        `f[i,j]` is set to `q[n-1+i-j]`. Each element `f[j,j]` is set
         to make the sum of elements in column `j` equal to 1.
         """
-        n = len(p) // 2 + 1
-        f = np.empty((n, n), dtype=type(p[0]))
+        n = len(q) // 2 + 1
+        f = np.empty((n, n), dtype=type(q[0]))
         for i in range(n):
-            # Assign array `[p[i], p[i+1], ..., p[i+n-1]]` to column
+            # Assign array `[q[i], q[i+1], ..., q[i+n-1]]` to column
             # `j=n-i-1` of the n-by-n matrix `f`. Then set `f[j,j]`
             # to make the sum of elements in column `j` equal to one.
             j = (n - 1) - i
-            f[:,j] = p[i:i+n]
+            f[:,j] = q[i:i+n]
             f[j,j] += 1 - fsum(f[:,j])
         return f
     
-    def p(self, gamma, beta=500):
+    def q(self, gamma, beta=500):
         """
         Returns a probability distribution over mutational effects.
         
@@ -120,8 +120,8 @@ class Parameters(object):
         lower_tail = (1 - gamma) * masses[::-1]
         #
         # Assemble the pieces into a single array, and normalize.
-        p = np.concatenate((lower_tail, [zero_mass], upper_tail))
-        return p / fsum(p)
+        q = np.concatenate((lower_tail, [zero_mass], upper_tail))
+        return q / fsum(q)
 
     def initial_freqs(self, mean='0.044', std='0.005'):
         """

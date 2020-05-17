@@ -111,7 +111,7 @@ class Solver(object):
         
 class PoorSolver(Solver):
     """
-    An poor solver for frequencies in the modified model.
+    A poor solver for frequencies in the modified model.
     """
     def _zero(self):
         """

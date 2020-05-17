@@ -1,3 +1,4 @@
+# %load ./Code/eigen.py
 from scipy import linalg
 
 
@@ -18,8 +19,8 @@ def equilibrium(W, max_error=1e-14, maxiter=10**5):
     # Get a first approximation of an eigenvector corresponding to the
     # largest real eigenvalue of `W`, using the `eig` function of 
     # SciPy's linear algebra package. The elements of the eigenvector
-    # complex numbers, possibly with negative real components. Thus we
-    # replace the elements with their absolute values.
+    # are complex numbers, possibly with negative real components. Thus
+    # we replace the elements with their absolute values.
     e_values, e_vectors = linalg.eig(W)
     which = np.argmax(e_values.real)
     e_vector = np.abs(e_vectors[:,which])
