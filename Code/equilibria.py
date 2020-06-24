@@ -1,69 +1,54 @@
+from scipy import stats
+
+
 class Equilibria(object):
     """
     Container for an array of equilibria and associated statistics.
     
-    Each row of the array corresponds to a distribution of probability
-    over mutational effects, and each column corresponds to an upper
-    limit on fitness.
+    Each row of the array corresponds to a weighting of beneficial
+    mutational effects, and each column corresponds to an upper limit
+    on fitness.
+    
+    Equilibria are calculated with death parameter `d` equal to zero. 
+    The plotting methods adjust for nonzero `d`.
     """    
-    def __init__(self, gammas, b_maxes, d='0.1', params_class=None):
+    def __init__(self, gammas, b_maxes, Params=Parameters):
         """
         Create array of equilibria, and calculate associated statistics.
         
-        `gammas`: weightings of beneficial effects
-        `b_maxes`: upper limits on birth rate
-        `params_class`: subclass of `Parameters` (default `Parameters`)
+        Parameters
+        * `gammas`: weightings of beneficial mutational effects
+        * `b_maxes`: upper limits on the birth parameter
+        * `Params`: subclass of `Parameters`
         
-        The mixture weights must be integer powers of 2 or 10.
+        The `gammas` must be integer powers of 2 or 10.
         """
-        # Create array of parameters objects, with one row for each
-        # mixture weight, and one column for each birth-rate limit. The
-        # death parameter is set to zero in order to improve the speed
-        # and accuracy of eigenvector calculations. Below, `d` is
-        # subtracted from fitnesses and eigenvalues.
-        if params_class is None:
-            params_class = Parameters
-        params = [[params_class(b_max=b_max, gamma=gamma, d=0) 
-                       for b_max in b_maxes]
-                           for gamma in gammas]
-        self.params = np.array(params)
-        d = mp_float(d)
-        #
         # Create arrays to hold results, with rows corresponding to
         # probability distributions over mutational effects, and columns
-        # corresponding to upper limits on fitness.
-        m, n = self.params.shape
+        # corresponding to upper limits on birth parameter.
+        m, n = len(gammas), len(b_maxes)
+        self.params = np.empty((m, n), dtype=object)
         self.eq = np.empty((m, n), dtype=object)
         self.e_value = np.empty((m, n))
         self.eigen_error = np.empty((m, n))
         self.mean = np.empty((m, n))
         self.var = np.empty((m, n))
         #
-        # Calculate equilibria along with means/variances of fitnesses.
+        # Calculate equilibria along with means/variances of fitnesses,
+        # with death parameter `d` set to zero.
+        d = 0
         for i in range(m):
             for j in range(n):
-                W = self.params[i,j].W.astype(float)
+                self.params[i,j] = Params(b_maxes[j], d, gamma=gammas[i])
                 m = self.params[i,j].m
-                m -= d
+                W = self.params[i,j].W.astype(float)
                 e_value, e_vector, error = equilibrium(W)
-                e_vector /= fsum(e_vector)
+                self.e_value[i,j] = e_value
                 self.eq[i,j] = e_vector
-                self.e_value[i,j] = e_value - d
                 self.eigen_error[i,j] = error
                 self.mean[i,j], self.var[i,j] = mean_var(self.eq[i,j], m)
-        #
-        # Get the upper limits on fitness from the first row of the
-        # parameters objects.
-        fitness_limits = [p.m[-1] for p in params[0]]
-        self.fitness_limits = np.array(fitness_limits, dtype=float)
-        #
-        # Convert the mixture weights to LaTeX expressions that will
-        # be used in labeling figures.
-        self.mixture_weights = mixture_weights.astype(float)
-        self.weight_labels = [exp_latex(g, '\gamma=') 
-                                  for g in mixture_weights]
 
-    def plot_stats(self):
+    def plot_stats(self, d='0.1'):
         """
         Plot the means and variances in fitness for all equilibria.
         """
@@ -74,19 +59,21 @@ class Equilibria(object):
         ax_v.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
         ax_v.grid(False)
         #
-        # Plot the means and variances as functions of the upper
-        # limit on fitness, row by row. Each row corresponds to a
-        # distribution of probability over mutational effects.
-        lims = self.fitness_limits
-        for m, v, l in zip(self.mean, self.var, self.weight_labels):
-            ax_m.plot(lims, m, label=l, marker='+', ls='none')
-            ax_v.plot(lims, v, label=l, marker='o', mfc='none', ls='none')
+        # Plot the means and variances as functions of the upper limit
+        # on fitness, row by row. Each row corresponds to a weighting 
+        # `gamma` of beneficial mutational effects.
+        lims = [float(p.b[-1] - mp_float(d)) for p in self.params[0,:]]
+        gammas = [exp_latex(p.gamma, '\gamma=') for p in self.params[:,0]]
+        mean = self.mean - float(d)
+        for m, v, g in zip(mean, self.var, gammas):
+            ax_m.plot(lims, m, label=g, marker='+', ls='none')
+            ax_v.plot(lims, v, label=g, marker='o', mfc='none', ls='none')
         #
         # Fit lines to means by linear regression, and plot them.
         xlim = ax_m.get_xlim()
         ylim = ax_m.get_ylim()
         ends = np.array(xlim)
-        for means in self.mean:
+        for means in mean:
             r = stats.linregress(lims, means)
             fitted_line = r.slope*ends + r.intercept
             ax_m.plot(ends, fitted_line, color='k', lw=0.5, zorder=1)
@@ -118,36 +105,38 @@ class Equilibria(object):
         max_y = max([e.max() for e in eq])
         self.ax.set_ylim([-0.0003, 1.05 * max_y])
         
-    def plot_column(self, j):
+    def plot_column(self, j, d='0.1'):
         """
         Plot equilibria for `j`-th upper limit on fitness.
         """
-        eq = self.eq[:, j]
-        fitness = self.params[0,j].m
+        eq = self.eq[:,j]
+        params = self.params[:,j]
+        fitness = (params[0].b - mp_float(d)).astype(float)
         variable_name = 'Beneficial Effects Weight'
         abbrev_var_name = 'Weight $\gamma$'
-        constant_name = 'Fitness Upper Limit {}'.format(fitness[-1])
+        constant_name = 'Fitness Upper Limit {:5.3f}'.format(fitness[-1])
         self._begin_plot_curves(eq)
         for i in range(len(eq)):
-            label = exp_latex(self.mixture_weights[i])
-            self.lines[i], = plt.plot(fitness, eq[i], label=label)
+            gamma = exp_latex(float(params[i].gamma), '\gamma=')
+            self.lines[i], = plt.plot(fitness, eq[i], label=gamma)
         self._finish_plot_curves(variable_name, abbrev_var_name,
                                  constant_name)
 
-    def plot_row(self, i):
+    def plot_row(self, i, d='0.1'):
         """
         Plot equilibria for `i`-th weighting of beneficial effects.
         """
-        eq = self.eq[i, :]
-        params = self.params[i, :]
+        eq = self.eq[i,:]
+        params = self.params[i,:]
+        gamma = exp_latex(float(params[0].gamma), '\gamma=')
         variable_name = 'Fitness Upper Limit'
         abbrev_var_name = 'Fitness Limit'
-        weight = exp_latex(self.mixture_weights[i])
-        constant_name = 'Beneficial Effects Weight {}'.format(weight)
+        constant_name = 'Beneficial Effects Weight {}'.format(gamma)
         self._begin_plot_curves(eq)
         for j in range(len(eq)):
-            label = '{:5.3f}'.format(self.fitness_limits[j])
-            self.lines[j], = plt.plot(params[j].m, eq[j], label=label)
+            fitness = (params[j].b - mp_float(d)).astype(float)
+            fitness_limit = '{:5.3f}'.format(fitness[-1])
+            self.lines[j], = plt.plot(fitness, eq[j], label=fitness_limit)
             self.lines[j].set_zorder(100 - j)
         self._finish_plot_curves(variable_name, abbrev_var_name,
                                  constant_name)

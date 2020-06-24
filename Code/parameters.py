@@ -9,7 +9,7 @@ class Parameters(object):
     
     All numbers, other than integer `n`, are multiprecision floats.
     """
-    def __init__(self, b_max=0.25, d='0.1', w='5e-4', gamma='1e-3'):
+    def __init__(self, b_max='0.25', d='0.1', w='5e-4', gamma='1e-3'):
         """
         Sets all parameters of the infinite-population model.
         
@@ -26,6 +26,7 @@ class Parameters(object):
         # float. In mixed-mode operations, (arrays of) integers and
         # floats are promoted automatically to (arrays of) multi-
         # precision floats.
+        b_max = mp_float(b_max)
         self.d = mp_float(d)
         self.w = mp_float(w)
         self.gamma = mp_float(gamma)
@@ -35,8 +36,8 @@ class Parameters(object):
         self.n = int(mp.nint(b_max / self.w)) + 1
         #
         # Create an array of n evenly spaced birth parameters ranging
-        # from 0 to (n-1)w.
-        self.b = linspace(0, (self.n - 1) * self.w, self.n)
+        # from 0 to `b_max`.
+        self.b = np.array(mp.linspace(0, b_max, self.n))
         #
         # Subtract the scalar death parameter `d` from all elements of
         # the array of birth parameters to get the array of fitnesses.
@@ -50,8 +51,8 @@ class Parameters(object):
         self.W = self.f(self.q(self.gamma)) * self.b
         self.W[np.diag_indices(self.n)] -= self.d
         
-    @classmethod
-    def f(self, q):
+    @staticmethod
+    def f(q):
         """
         Returns the matrix of probabilities of mutational effects.
         
@@ -62,14 +63,11 @@ class Parameters(object):
         `f[i,j]` is set to `q[n-1+i-j]`. Each element `f[j,j]` is set
         to make the sum of elements in column `j` equal to 1.
         """
-        n = len(q) // 2 + 1
-        f = np.empty((n, n), dtype=type(q[0]))
-        for i in range(n):
-            # Assign array `[q[i], q[i+1], ..., q[i+n-1]]` to column
-            # `j=n-i-1` of the n-by-n matrix `f`. Then set `f[j,j]`
-            # to make the sum of elements in column `j` equal to one.
-            j = (n - 1) - i
-            f[:,j] = q[i:i+n]
+        n = (len(q) + 1) // 2
+        f = np.empty((n, n), dtype=object)
+        for j in range(n):
+            for i in range(n):
+                f[i,j] = q[(n-1) + (i-j)]
             f[j,j] += 1 - fsum(f[:,j])
         return f
     
@@ -98,9 +96,8 @@ class Parameters(object):
         """
         # The walls of the width-w bins centered on the n - 1 positive
         # mutational effects are n evenly spaced points ranging from
-        # (1-1/2)w to (n-1/2)w. Create array [1/2, 3/2, ..., n-1/2],
-        # and then scale all of its elements by w.
-        walls = self.w * linspace(1/2, self.n - 1/2, self.n)
+        # (1-1/2)w to (n-1/2)w, i.e., the birth parameters plus w/2.
+        walls = self.b + self.w/2
         
         # Calculate bin masses by differencing values of the comple-
         # mentary CDF of the Gamma distribution at the bin walls. 
@@ -146,11 +143,13 @@ class Parameters(object):
         # are (0-1/2)w - d, (1-1/2)w - d, ..., (n-1/2)w - d. Create 
         # an array [-1/2, 1/2, ..., n-1/2], scale all of the elements
         # by w, and then subtract d from all of the elements.
-        walls = self.w * linspace(-1/2, self.n-1/2, self.n+1) - self.d
+        walls = self.m + self.w/2
+        walls = np.concatenate((walls[:1] - self.w, walls))
         #
         # Evaluate the CDF and the complementary CDF at the bin walls.
+        # Accuracy is much greater using erfc() than using erf().
         z = (walls - mean) / (std * mp_float(2.0)**0.5)
-        cdf = 0.5 * (1 + erf(z))
+        cdf = 0.5 * erfc(-z)
         ccdf = 0.5 * erfc(z)
         #
         # Calculate bin masses by differencing CDF values at the bin

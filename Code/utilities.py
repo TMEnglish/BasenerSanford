@@ -1,104 +1,63 @@
-# ASSUME: import numpy as np
-# ASSUME: from mpmath import mp
 import math
-from os import mkdir
     
-
-# Make some mpmath functions into quasi-ufuncs taking either scalar or
-# array arguments.
+# Make some mpmath functions into quasi-ufuncs taking either
+# scalar or array arguments.
 #
 mp_float = np.frompyfunc(mp.mpf, 1, 1)
-erf = np.frompyfunc(mp.erf, 1, 1)
 erfc = np.frompyfunc(mp.erfc, 1, 1)
 
 
 def fsum(a):
     """
-    Returns an accurate sum of elements of `a`.
+    Returns an accurate sum of elements of iterable `a`.
     
-    If `a[0]` is a multiprecision float, then `mpmath.fsum(a)` is
-    returned. Otherwise, `math.fsum(a)` is returned.
+    Iterable `a` is converted to a NumPy array if it is not one 
+    already. The array must be one-dimensional. If the array contains
+    links to objects, then the array is assumed to contain a link to at
+    least one multiprecision float, and the multiprecision sum is
+    calculated using `mpmath.fsum(a)`. Otherwise, the 64-bit floating-
+    point sum is calculated by `math.fsum(a)`.
     """
-    if type(a[0]) is mp.mpf:
+    if not isinstance(a, np.ndarray):
+        a = np.array(a)
+    if a.dtype is np.dtype('O'):
         return mp.fsum(a)
     return math.fsum(a)
 
 
-def linspace(a, b, n):
+def bias_exponents(a, max_exponent):
     """
-    Tries to return numpy.linspace(); falls back on mpmath version.
-    """
-    try:
-        return np.linspace(a, b, n)
-    except:
-        return np.array(mp.linspace(a, b, n))
+    Scales array `a` of floating-point numbers by an integer power of 2.
+    
+    Returns the integer power `n` of the scalar `2**n`.
 
-
-def bias_exponents(array, max_exponent, current_max=None):
+    On return, the maximum element of `a` has `max_exponent` as its
+    exponent. If, before and after the scaling operation, no element
+    of `a` is subnormal (with leading zeros in its mantissa), then the
+    mantissas of all elements are unchanged, and the operation is
+    precisely invertible. The elements of `a` may be multiprecision
+    floats.
     """
-    Scales elements in `array` by an integer power of 2.
-
-    On return, the internal representation of the maximum element of
-    `array` has `max_exponent` as its exponent. The given `array` is
-    returned.
-    """
-    if current_max is None:
-        _, current_max = math.frexp(array.max())
-    array *= 2.0 ** (max_exponent - current_max)
-    return array
+    a_max = np.max(a)
+    basetype = type(a_max)
+    unused_mantissa, current_max_exponent = mp.frexp(a_max)
+    power = max_exponent - current_max_exponent
+    if power != 0.0:
+        a *= basetype(2.0)**power
+    return power
 
 
 def mean_var(frequency, x):
     """
     Returns mean and variance for `frequency` distribution over `x`.
     
-    Sums are calculated accurately using `fsum()`.
+    It is assumed that all elements of `frequency` are non-negative
+    numbers (not necessarily integers). All calculations are performed
+    with multiprecision floats. 
     """
-    if type(frequency[0]) is mp.mpf:
-        if not type(x[0]) is mp.mpf:
-            x = mp_float(x)
-    elif type(x[0]) is mp.mpf:
-        frequency = mp_float(frequency)
-    norm = fsum(frequency)
-    mom1 = fsum(frequency * x) 
-    mom2 = fsum(frequency * x**2)
-    var = (mom2 - mom1**2 / norm) / norm
-    mean = mom1 / norm
+    x = mp_float(x)
+    frequency = mp_float(frequency)
+    norm = mp.fsum(frequency)
+    mean = mp.fsum(frequency * x) / norm
+    var = mp.fsum(frequency * (x - mean)**2) / norm
     return mean, var
-   
-
-def relative_error(actual, desired):
-    """
-    Returns `(actual - desired) / desired`, with 0/0 treated as 0.
-    """
-    if np.shape(actual) != np.shape(desired):
-        raise ValueError('Arguments are not identical in shape')
-    if not isinstance(desired, np.ndarray):
-        desired = np.array(desired)
-    result = np.subtract(actual, desired)
-    unequal = result != 0
-    undefined = np.logical_and(unequal, desired == 0)
-    defined = np.logical_and(unequal, desired != 0)
-    result[undefined] = np.inf
-    result[defined] /= desired[defined]
-    return result
-
-
-def slice_to_support(p):
-    """
-    Returns a slice excluding zeros in the tails of distribution `p`.
-    
-    Assumption: At least one element of `p` is nonzero.
-    """
-    w, = np.nonzero(p)
-    return slice(w[0], w[-1] + 1)
-
-
-def ensure_directory_exists(path):
-    """
-    Create directory with given `path` if it does not exist already.
-    """
-    try:
-        mkdir(path)
-    except FileExistsError:
-        pass
